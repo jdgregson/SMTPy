@@ -27,6 +27,7 @@ import socket
 import logging
 import threading
 import Queue
+import re
 import mimetypes as types
 from subprocess import Popen
 from subprocess import PIPE
@@ -100,6 +101,100 @@ def log(message, message_type=None):
             logger.debug(message)
         logger.removeHandler(hdlr)
     return
+
+
+class ClientHandler(threading.Thread):
+    """
+    An instance of this class will take a client from the queue, have an SMTP
+    conversation with the client, put the client's email on the send queue,
+    close the connection, and then get another client from the queue.
+    """
+
+    def __init__(self, queue):
+        threading.Thread.__init__(self)
+        self.queue = queue
+
+    def run(self):
+        while True:
+            # grab a client from the queue
+            client, address = self.queue.get()
+            #client.settimeout(0.1)
+            client.settimeout(100)
+            # client communication loop
+            FROM_HOST = ''
+            MAIL_FROM = ''
+            RECEIVING_DATA = False
+            RCPT_TO = []
+            DATA = []
+            HEADERS = []
+            FROM_HEADER_SET = False
+            client.send('220 example.com ESMTP %s\r\n' % const.HOSTNAME)
+            while True:
+                try:
+                    message = client.recv(1024)
+                except:
+                    log("The connection to %s timed out"
+                         % address[0], "info")
+                    message = None
+                # HELO
+                # EHLO
+                if bool(re.search('^HELO', message)) or bool(re.search('^EHLO',
+                    message)):
+                    if not FROM_HOST:
+                        FROM_HOST = message.split()[1]
+                        client.send('250 Nice to meet you, %s\r\n' % FROM_HOST)
+                # MAIL FROM
+                elif bool(re.search('^MAIL FROM', message)):
+                    MAIL_FROM = message.split(':')[1]
+                    client.send('250 Ok\r\n')
+                # RCPT TO
+                elif bool(re.search('^RCPT TO', message)):
+                    RCPT_TO.append(message.split(':')[1])
+                    client.send('250 Ok\r\n')
+                # SIZE
+                elif bool(re.search('^SIZE', message)):
+                    client.send('504 NOT IMPLEMENTED\r\n')
+                # VRFY
+                elif bool(re.search('^VRFY', message)):
+                    client.send('504 NOT IMPLEMENTED\r\n')
+                # TURN
+                elif bool(re.search('^TURN', message)):
+                    client.send('504 NOT IMPLEMENTED\r\n')
+                # AUTH
+                elif bool(re.search('^AUTH', message)):
+                    client.send('504 NOT IMPLEMENTED\r\n')
+                # RSET
+                elif bool(re.search('^RSET', message)):
+                    client.send('504 NOT IMPLEMENTED\r\n')
+                # EXPN
+                elif bool(re.search('^EXPN', message)):
+                    client.send('504 NOT IMPLEMENTED\r\n')
+                # HELP
+                elif bool(re.search('^HELP', message)):
+                    client.send('504 NOT IMPLEMENTED\r\n')
+                # QUIT
+                elif bool(re.search('^QUIT', message)):
+                    client.send('221 Bye\r\n')
+                    log(''.join(DATA))
+                    break
+                # DATA
+                elif bool(re.search('^DATA', message)):
+                    client.send('354 End data with <CR><LF>.<CR><LF>\r\n')
+                    RECEIVING_DATA = True
+                # .
+                elif RECEIVING_DATA and bool(re.search('^\.', message)):
+                    RECEIVING_DATA = False
+                    client.send('250 Ok: message queued as %i\r\n' % 462456345)
+                # MESSAGE BODY
+                elif RECEIVING_DATA:
+                    DATA.append(message)
+                # ANYTHING ELSE
+                else:
+                    client.send('504 NOT IMPLEMENTED\r\n')
+            client.close()
+
+            # tell queue that the client has been served
+            self.queue.task_done()
 
 
 def main():
