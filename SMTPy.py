@@ -182,7 +182,8 @@ class ClientHandler(threading.Thread):
                     client.send('354 End data with <CR><LF>.<CR><LF>\r\n')
                     RECEIVING_DATA = True
                 # .
-                elif RECEIVING_DATA and bool(re.search('^\.', message)):
+                elif RECEIVING_DATA and (bool(re.search('^\.', message))
+                  or bool(re.search('\r\n\.\r\n', message))):
                     RECEIVING_DATA = False
                     client.send('250 Ok: message queued as %i\r\n' % 462456345)
                 # MESSAGE BODY
