@@ -1,25 +1,24 @@
 #!/usr/bin/python2.7
-#*************************************************************************
+#*******************************************************************************
 #
 # SMTPy version 0.0.1
 #
 # Copyright (c) 2017 Jonathan Gregson  <jdgregson@gmail.com>
 #
-# This program is free software; you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation; either version 3 of the License, or
-# (at your option) any later version.
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 3 of the License, or (at your option) any later
+# version.
 #
-# This program is distributed in the hope  that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# This program is distributed in the hope  that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
 #
-# You should have received a copy of the GNU General Public License along
-# with this program; if not, write to the Free Software Foundation, Inc.,
-# 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# You should have received a copy of the GNU General Public License along with
+# this program; if not, write to the Free Software Foundation, Inc., 51 Franklin
+# Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-#*************************************************************************
+#*******************************************************************************
 
 
 import sys
@@ -37,8 +36,7 @@ from includes import daemon
 
 
 # Change this to whatever it is in your tests.
-# TODO: This should be changed to /etc/something
-# before httpy is released
+# TODO: This should be changed to /etc/something before SMTPy is released
 CONFIG_FILE = "/mnt/c/Users/Jonathan/Google Drive/Projects/SMTPy/SMTPy.conf"
 
 
@@ -107,6 +105,30 @@ def log(message, message_type=None):
 def main():
     load_configuration()
     log("%s, starting..." % const.SERVER_INFO, "info")
+    # create queue for threading
+    queue = Queue.Queue()
+    for i in range(const.THREADS):
+        handler = ClientHandler(queue)
+        handler.setDaemon(True)
+        handler.start()
+    # open socket, bind port, and listen
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind((const.LISTEN_IP_ADDRESS, const.SERVER_PORT))
+        log("Listening on port %s\n" % str(const.SERVER_PORT), "info")
+    except socket.error as (errno, strerr):
+        log("Could not bind port %s: %s. Exiting..." % (const.SERVER_PORT,
+                                                        strerr), "error")
+        sys.exit(1)
+    else:
+        sock.listen(5)
+        while True:
+            client, address = sock.accept()
+            log("accepted connection from %s" % str(address), "info")
+            # place the client in the queue
+            queue.put((client, address))
+    finally:
+        sock.close()
 
 
 if __name__ == "__main__":
@@ -121,7 +143,7 @@ if __name__ == "__main__":
         elif '--no-daemon' == sys.argv[1]:
             main()
         else:
-            print "Unknown command"
+            print "Unknown argument"
             sys.exit(2)
         sys.exit(0)
     else:
